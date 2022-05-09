@@ -91,11 +91,13 @@ app.post("/login", async (req, res) => {
 })
 
 app.post("/wallet", async (req, res) => {
-    const { value, description } = req.body;
+    const { value, description, token } = req.body;
     const { userId } = req.headers;
     const infos = {
+        userId,
         value,
-        description
+        description,
+        day: dayjs().format('DD/MM')
     }
 
     const infosSchema = joi.object({
@@ -103,7 +105,7 @@ app.post("/wallet", async (req, res) => {
         description: joi.string.required(),
     });
 
-    const validation = userSchema.validate(user);
+    const validation = infosSchema.validate(infos);
 
     if (validation.error) {
         console.log(validation.error)
@@ -114,13 +116,77 @@ app.post("/wallet", async (req, res) => {
     try {
         await mongoClient.connect();
         const db = mongoClient.db("users");
-        const contains = await db.collection("userWallet").findOne({ userId });
-        res.send(contains);
+        const verification = await db.collection("sessions").findOne({ token });
+
+        if (!verification) {
+            res.sendStatus(409);
+        }
+
+        const userCollection = mongoClient.db("userWallet");
+        const contains = userCollection.findOne({ userId });
+        if (!contains) {
+            const insert = await db.collection("userWallet").insertOne({infos})
+        } else {
+            await userCollection.updateOne({...infos, })
+        }
+        res.sendStatus(201);
         mongoClient.close();
 
     } catch (e) {
         res.sendStatus(500)
         mongoClient.close();
+    }
+})
+
+app.get("/wallet", async (req, res) => {
+    const { token } = req.headers;
+    const userArray = [];
+    const userWallet = {
+        name: '',
+        userId: '',
+        infos: ''
+    }
+
+    try {
+        await mongoClient.connect();
+        const searchToken = await db.collection("sessions").findOne({ token });
+        const ID = searchToken._id;
+        const getUser = await db.collection("userInfos").findOne({ _id: new ObjectId(ID) });
+
+        if (!getUser) {
+            return res.sendStatus(409);
+        }
+
+        const userName = getUser.name;
+        const userDB = await db.collection("userWallet").findOne({ userId: new ObjectId(ID)}).toArray();
+
+        for (let i = 0; i < userDB.length; i++) {
+            userArray.push(userDB[i])
+        }
+        res.send(userArray);
+    }
+    catch (e) {
+        console.log(e);
+    }
+})
+
+app.delete("/wallet", async (req, res) => {
+    const { token } = req.body;
+
+    try {
+        await mongoClient.connect();
+        const db = mongoClient.db("users");
+        const user = await db.collection("sessions").findOne({ token });
+
+        if (!user) {
+            res.sendStatus(409);
+        } 
+
+        await db.collection("sessions").deleteOne({ user })
+        res.sendStatus(201);
+
+    } catch(e) {
+        console.log(e);
     }
 })
 
