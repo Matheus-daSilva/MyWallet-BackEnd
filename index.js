@@ -16,7 +16,7 @@ const mongoClient = new MongoClient(process.env.MONGO_URI);
 app.post("/register", async (req, res) => {
     let passwordHash;
 
-    const {name, email, password, passwordConfirmation} = req.body
+    const { name, email, password, passwordConfirmation } = req.body
 
     const user = {
         name,
@@ -33,16 +33,13 @@ app.post("/register", async (req, res) => {
     });
 
     const validation = userSchema.validate(user);
-    
+
     if (validation.error) {
-        console.log(validation.error)
-        console.log(user)
         return res.status(422).send("preencha todos os campos corretamente")
     }
 
     if (user.password === user.passwordConfirmation) {
         passwordHash = bcrypt.hashSync(user.password, 10);
-        console.log(passwordHash)
     } else {
         return res.status(422).send("senhas divergentes");
     }
@@ -54,7 +51,7 @@ app.post("/register", async (req, res) => {
         const db = mongoClient.db("users");
         const contains = await db.collection("userInfos").findOne({ email });
         if (!contains) {
-            await db.collection("userInfos").insertOne({...user, password: passwordHash});
+            await db.collection("userInfos").insertOne({ ...user, password: passwordHash });
             res.sendStatus(201);
         } else {
             res.status(409).send("usuário já cadastrado")
@@ -74,7 +71,6 @@ app.post("/login", async (req, res) => {
         await mongoClient.connect();
         const db = mongoClient.db("users");
         const user = await db.collection("userInfos").findOne({ email });
-        console.log(user);
         if (user && bcrypt.compareSync(password, user.password)) {
             const token = v4();
             console.log(token)
@@ -87,11 +83,45 @@ app.post("/login", async (req, res) => {
             res.status(422).send("senha ou usuário incorretos");
         }
         mongoClient.close();
-    } catch(e) {
+    } catch (e) {
         res.sendStatus(500)
         mongoClient.close();
     }
 
+})
+
+app.post("/wallet", async (req, res) => {
+    const { value, description } = req.body;
+    const { userId } = req.headers;
+    const infos = {
+        value,
+        description
+    }
+
+    const infosSchema = joi.object({
+        value: joi.string().required(),
+        description: joi.string.required(),
+    });
+
+    const validation = userSchema.validate(user);
+
+    if (validation.error) {
+        console.log(validation.error)
+        console.log(user)
+        return res.status(422).send("preencha todos os campos corretamente")
+    }
+
+    try {
+        await mongoClient.connect();
+        const db = mongoClient.db("users");
+        const contains = await db.collection("userWallet").findOne({ userId });
+        res.send(contains);
+        mongoClient.close();
+
+    } catch (e) {
+        res.sendStatus(500)
+        mongoClient.close();
+    }
 })
 
 app.listen(5000);
