@@ -3,7 +3,7 @@ import cors from "cors";
 import bcrypt from 'bcrypt';
 import joi from "joi";
 import dotenv from "dotenv";
-import { v4 as uuid } from 'uuid';
+import { v4 } from 'uuid';
 import { MongoClient } from "mongodb";
 
 const app = express();
@@ -16,14 +16,14 @@ const mongoClient = new MongoClient(process.env.MONGO_URI);
 app.post("/register", async (req, res) => {
     let passwordHash;
 
-    let user = {
-        name: req.body.name,
-        email: req.body.email,
-        password: req.body.password,
-        passwordConfirmation: req.body.passwordConfirmation
-    }
+    const {name, email, password, passwordConfirmation} = req.body
 
-    const getEmail = user.email;
+    const user = {
+        name,
+        email,
+        password,
+        passwordConfirmation
+    }
 
     let userSchema = joi.object({
         name: joi.string().required(),
@@ -33,7 +33,7 @@ app.post("/register", async (req, res) => {
     });
 
     const validation = userSchema.validate(user);
-
+    
     if (validation.error) {
         console.log(validation.error)
         console.log(user)
@@ -42,18 +42,19 @@ app.post("/register", async (req, res) => {
 
     if (user.password === user.passwordConfirmation) {
         passwordHash = bcrypt.hashSync(user.password, 10);
+        console.log(passwordHash)
     } else {
-        return res.status(422).send("preencha todos os campos corretamente");
+        return res.status(422).send("senhas divergentes");
     }
 
     delete user.passwordConfirmation;
+
     try {
         await mongoClient.connect();
         const db = mongoClient.db("users");
-        const contains = await db.collection("userInfos").findOne({ getEmail });
+        const contains = await db.collection("userInfos").findOne({ email });
         if (!contains) {
-            await db.collection("userInfos").insertOne({ ...user, password: passwordHash });
-            console.log(user)
+            await db.collection("userInfos").insertOne({...user, password: passwordHash});
             res.sendStatus(201);
         } else {
             res.status(409).send("usuário já cadastrado")
@@ -68,24 +69,27 @@ app.post("/register", async (req, res) => {
 
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
-    const token = uuid();
 
     try {
-        mongoClient.connect();
+        await mongoClient.connect();
         const db = mongoClient.db("users");
-        const user = await db.collection('userInfos').findOne({ email });
+        const user = await db.collection("userInfos").findOne({ email });
+        console.log(user);
         if (user && bcrypt.compareSync(password, user.password)) {
-            const token = uuid.v4();
+            const token = v4();
+            console.log(token)
             await db.collection("sessions").insertOne({
                 userId: user._id,
                 token
             })
             res.send(token);
         } else {
-            return res.status(422).send("senha ou usuário incorretos");
+            res.status(422).send("senha ou usuário incorretos");
         }
+        mongoClient.close();
     } catch(e) {
-        return res.sendStatus(500)
+        res.sendStatus(500)
+        mongoClient.close();
     }
 
 })
